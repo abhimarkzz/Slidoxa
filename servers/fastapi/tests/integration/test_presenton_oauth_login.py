@@ -73,6 +73,7 @@ def test_presenton_provider_connection_requires_local_admin(monkeypatch, tmp_pat
 
 def test_auth_disabled_runtime_can_manage_presenton_provider(monkeypatch, tmp_path):
     monkeypatch.setenv("DISABLE_AUTH", "true")
+    monkeypatch.setenv("PRESENTON_ELECTRON", "true")
     monkeypatch.setenv("USER_CONFIG_PATH", str(tmp_path / "userConfig.json"))
     client, engine, _session_maker = _build_client(tmp_path)
 

@@ -28,5 +28,6 @@ interface Window {
     NEXT_PUBLIC_FAST_API: string;
     APP_VERSION: string;
     DISABLE_AUTH: string;
+    PRESENTON_ELECTRON: string;
   };
 }

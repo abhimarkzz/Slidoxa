@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('env', {
   NEXT_PUBLIC_FAST_API: process.env.NEXT_PUBLIC_FAST_API || '',
   APP_VERSION: process.env.APP_VERSION || '',
   DISABLE_AUTH: process.env.DISABLE_AUTH || '',
+  PRESENTON_ELECTRON: process.env.PRESENTON_ELECTRON || '',
 });
 
 

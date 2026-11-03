@@ -78,13 +78,16 @@ def get_presenton_oauth_client_id() -> str:
     return DEFAULT_PRESENTON_OAUTH_CLIENT_ID
 
 
-def is_disable_auth_enabled():
-    return _is_truthy(get_disable_auth_env())
-
-
 def is_presenton_electron_desktop():
-    """True when running inside the Presenton Electron desktop app."""
-    return _is_truthy(os.getenv("PRESENTON_ELECTRON"))
+    """True only when running inside the trusted Presenton Electron runtime."""
+    return os.getenv("PRESENTON_ELECTRON") == "true"
+
+
+def is_disable_auth_enabled():
+    """Disable account authentication only in the Electron desktop runtime."""
+    return is_presenton_electron_desktop() and _is_truthy(
+        get_disable_auth_env()
+    )
 
 
 def get_llm_provider_env():

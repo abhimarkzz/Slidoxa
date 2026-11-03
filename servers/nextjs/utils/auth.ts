@@ -4,8 +4,8 @@ export function isTruthyAuthValue(value?: string | null): boolean {
 }
 
 export function getDisableAuthValue(): string | undefined {
-  if (typeof window !== "undefined" && window.env?.DISABLE_AUTH) {
-    return window.env.DISABLE_AUTH;
+  if (typeof window !== "undefined") {
+    return window.env?.DISABLE_AUTH;
   }
 
   if (typeof process !== "undefined") {
@@ -15,6 +15,20 @@ export function getDisableAuthValue(): string | undefined {
   return undefined;
 }
 
+export function isPresentonElectronDesktop(): boolean {
+  if (typeof window !== "undefined") {
+    return window.env?.PRESENTON_ELECTRON === "true";
+  }
+
+  return (
+    typeof process !== "undefined" &&
+    process.env.PRESENTON_ELECTRON === "true"
+  );
+}
+
 export function isAuthDisabled(): boolean {
-  return isTruthyAuthValue(getDisableAuthValue());
+  return (
+    isPresentonElectronDesktop() &&
+    isTruthyAuthValue(getDisableAuthValue())
+  );
 }

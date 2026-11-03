@@ -403,6 +403,7 @@ async function startServers(fastApiPort: number, nextjsPort: number) {
         USER_CONFIG_PATH: process.env.USER_CONFIG_PATH,
         APP_DATA_DIRECTORY: appDataDir,
         DISABLE_AUTH: disableAuthForElectron,
+        PRESENTON_ELECTRON: "true",
         EXPORT_PACKAGE_ROOT: exportPackageRoot,
         PRESENTON_APP_ROOT: resourceBaseDir,
         PUPPETEER_CACHE_DIR: puppeteerCacheDir,
