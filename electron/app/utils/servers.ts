@@ -23,6 +23,12 @@ function resolveNextJsStandaloneServer(directory: string): {
     return { serverScript: directScript, cwd: directory };
   }
 
+  const packageScript = path.join(directory, "packages", "frontend", "server.js");
+  if (fs.existsSync(packageScript)) {
+    return { serverScript: packageScript, cwd: path.dirname(packageScript) };
+  }
+
+  // Compatibility with standalone bundles created before the monorepo migration.
   const nestedScript = path.join(directory, "servers", "nextjs", "server.js");
   if (fs.existsSync(nestedScript)) {
     return { serverScript: nestedScript, cwd: path.dirname(nestedScript) };
@@ -61,7 +67,7 @@ function resolveElectronNodeExecutable(): string {
   return process.execPath;
 }
 
-/** Next.js 16+ standalone runs from servers/nextjs/; static/public must sit next to server.js. */
+/** Next.js standalone assets must sit beside the resolved server.js entrypoint. */
 function ensureNestedStandaloneAssets(bundleRoot: string, serverCwd: string): void {
   if (path.resolve(bundleRoot) === path.resolve(serverCwd)) {
     return;

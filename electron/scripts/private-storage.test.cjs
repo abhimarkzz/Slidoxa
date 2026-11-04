@@ -43,14 +43,30 @@ test("private directories reject shared writable parents without changing them",
 test("private directories reject paths owned by another user", posix, () => {
   const target = path.join(directory, "other-user");
   fs.mkdirSync(target);
+
+  // Match the canonical path because ensurePrivateDirectory resolves
+  // its parent before checking ownership.
+  const canonicalTarget = fs.realpathSync(target);
   const original = fs.lstatSync;
+
   fs.lstatSync = function (filename, ...args) {
     const stat = original.call(fs, filename, ...args);
-    if (filename === target) stat.uid = process.getuid() + 1;
+
+    if (path.resolve(filename) === canonicalTarget) {
+      stat.uid = process.getuid() + 1;
+    }
+
     return stat;
   };
-  try { assert.throws(() => ensurePrivateDirectory(target), /another user/); }
-  finally { fs.lstatSync = original; }
+
+  try {
+    assert.throws(
+      () => ensurePrivateDirectory(target),
+      /another user/,
+    );
+  } finally {
+    fs.lstatSync = original;
+  }
 });
 
 test("a private home keeps existing data safe below a group-writable config directory", posix, () => {
@@ -121,7 +137,7 @@ test("Windows runtime keeps temporary data under the per-user storage root", () 
   const app = {
     isPackaged: true, getAppPath: () => path.join(directory, "application"),
     getPath: (name) => name === "userData" ? userData : sharedTemp,
-    setPath() {}, commandLine: { appendSwitch() {} },
+    setPath() { }, commandLine: { appendSwitch() { } },
   };
   try {
     Object.defineProperty(process, "platform", { value: "win32" });

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Slidoxa wordmark + mark (light backgrounds). License: Apache 2.0. -->
+
+<svg
+   viewBox="0 0 900 220"
+   width="900"
+   height="220"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="slidoxa-wordmark-study.svg"
+   inkscape:version="1.4.4 (dcaf3e7d, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs6">
+    <rect
+       x="169.97703"
+       y="13.159512"
+       width="454.00315"
+       height="152.43101"
+       id="rect7" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview6"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.91188794"
+     inkscape:cx="573.53538"
+     inkscape:cy="176.00847"
+     inkscape:window-width="1440"
+     inkscape:window-height="900"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg6" />
+  <!-- Mark -->
+  <g
+     transform="translate(20 30)"
+     id="g6">
+    <rect
+       x="20"
+       y="20"
+       width="110"
+       height="80"
+       rx="16"
+       ry="16"
+       fill="#60A5FA"
+       opacity="0.65"
+       id="rect1" />
+    <rect
+       x="12"
+       y="42"
+       width="110"
+       height="80"
+       rx="16"
+       ry="16"
+       fill="#7A5AF8"
+       opacity="0.92"
+       id="rect2" />
+    <rect
+       x="4"
+       y="64"
+       width="110"
+       height="80"
+       rx="16"
+       ry="16"
+       fill="#0F1020"
+       id="rect3" />
+    <rect
+       x="22"
+       y="86"
+       width="60"
+       height="8"
+       rx="4"
+       ry="4"
+       fill="#7A5AF8"
+       id="rect4" />
+    <rect
+       x="22"
+       y="104"
+       width="44"
+       height="6"
+       rx="3"
+       ry="3"
+       fill="#FFFFFF"
+       opacity="0.65"
+       id="rect5" />
+    <rect
+       x="22"
+       y="118"
+       width="52"
+       height="6"
+       rx="3"
+       ry="3"
+       fill="#FFFFFF"
+       opacity="0.45"
+       id="rect6" />
+  </g>
+  <!-- Wordmark -->
+  <text
+     x="190"
+     y="138"
+     font-family="Helvetica, Arial, sans-serif"
+     font-weight="700"
+     font-size="112px"
+     fill="#0f1020"
+     letter-spacing="-3"
+     id="text6">slido<tspan
+   style="fill:#7a5af8;fill-opacity:1"
+   id="tspan1">x</tspan>a</text>
+  <text
+     xml:space="preserve"
+     id="text1"
+     style="fill:#7a5af8;text-orientation:auto;writing-mode:lr-tb;direction:ltr;-inkscape-font-specification:'Plus Jakarta Sans, Bold';font-family:'Plus Jakarta Sans';font-weight:bold;font-style:normal;font-stretch:normal;font-variant:normal;font-size:112px;font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill-opacity:1;white-space:pre;shape-inside:url(#rect7)" />
+</svg>

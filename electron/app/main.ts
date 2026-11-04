@@ -252,22 +252,22 @@ const createWindow = (appOrigin: string) => {
     backgroundColor: "#f3f5ff",
     icon: path.join(resourceBaseDir, "resources/ui/assets/images/presenton_short_filled.png"),
     webPreferences: {
-        // Ensure a known preload path and explicit isolation settings so
-        // the `contextBridge` API is exposed reliably to renderer pages.
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-        preload: (() => {
-          const p = path.join(__dirname, 'preloads/index.js');
-          try {
-            if (!fs.existsSync(p)) {
-              safeWarn(`[Presenton] Preload not found at ${p}`);
-            }
-          } catch (e) {
-            safeWarn('[Presenton] Failed to stat preload path', e);
+      // Ensure a known preload path and explicit isolation settings so
+      // the `contextBridge` API is exposed reliably to renderer pages.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      preload: (() => {
+        const p = path.join(__dirname, 'preloads/index.js');
+        try {
+          if (!fs.existsSync(p)) {
+            safeWarn(`[Presenton] Preload not found at ${p}`);
           }
-          return p;
-        })(),
+        } catch (e) {
+          safeWarn('[Presenton] Failed to stat preload path', e);
+        }
+        return p;
+      })(),
     },
   });
   win = mainWindow;
@@ -369,6 +369,11 @@ async function startServers(fastApiPort: number, nextjsPort: number) {
         // Docker. Keep only Electron-specific overrides here.
         DEBUG: isDev ? "True" : "False",
         APP_DATA_DIRECTORY: appDataDir,
+        FASTEMBED_CACHE_PATH: path.join(appDataDir, "fastembed"),
+        PRESENTON_FASTEMBED_ICON_CACHE_DIR: path.join(
+          appDataDir,
+          "fastembed-icons",
+        ),
         TEMP_DIRECTORY: tempDir,
         USER_CONFIG_PATH: userConfigPath,
         MIGRATE_DATABASE_ON_STARTUP: "True",
@@ -453,96 +458,99 @@ async function forceQuitApp(exitCode = 0) {
 }
 
 if (gotSingleInstanceLock) {
-app.whenReady().then(async () => {
-  const disableAuthForElectron = resolveElectronDisableAuth();
-  process.env.DISABLE_AUTH = disableAuthForElectron;
-  process.env.ELECTRON_DISABLE_AUTH = disableAuthForElectron;
-  process.env.PRESENTON_ELECTRON = "true";
+  app.whenReady().then(async () => {
+    const disableAuthForElectron = resolveElectronDisableAuth();
+    process.env.DISABLE_AUTH = disableAuthForElectron;
+    process.env.ELECTRON_DISABLE_AUTH = disableAuthForElectron;
+    process.env.PRESENTON_ELECTRON = "true";
 
-  // Ensure all required directories exist before starting
-  ensureDirectoriesExist();
+    // Ensure all required directories exist before starting
+    ensureDirectoriesExist();
 
-  // Resolve runtime ports and publish their URLs before creating the first
-  // renderer. Electron renderer processes snapshot their environment at
-  // launch, so assigning these after loadFile/loadURL can leave window.env
-  // empty for the lifetime of the renderer.
-  const [fastApiPort, nextjsPort] = await findUnusedPorts();
-  safeLog(`FastAPI port: ${fastApiPort}, NextJS port: ${nextjsPort}`);
-  setupEnv(fastApiPort, nextjsPort);
-  await initializeDesktopSession(session.defaultSession, [
-    `${localhost}:${nextjsPort}`,
-    `${localhost}:${fastApiPort}`,
-  ]);
-  setupIpcHandlers();
-
-  await finishChromiumCacheRecovery(
-    electronAppPaths.userDataDir,
-    chromiumCacheRecovery,
-  );
-  updateSentryRuntimeContext(chromiumCacheRecovery);
-
-  // Create the main window hidden; the app splash handles the visible startup state.
-  createWindow(`${localhost}:${nextjsPort}`);
-
-  try {
-    syncUserConfigFromEnv();
-  } catch (error) {
-    safeWarn("[Presenton] Failed to persist startup user config", error);
-  }
-
-  try {
-    await startServers(fastApiPort, nextjsPort);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    dialog.showErrorBox(
-      "Presenton Could Not Start",
-      `The local application servers failed to start.\n\n${detail}`,
+    // Resolve runtime ports and publish their URLs before creating the first
+    // renderer. Electron renderer processes snapshot their environment at
+    // launch, so assigning these after loadFile/loadURL can leave window.env
+    // empty for the lifetime of the renderer.
+    const [fastApiPort, nextjsPort] = await findUnusedPorts();
+    safeLog(`FastAPI port: ${fastApiPort}, NextJS port: ${nextjsPort}`);
+    setupEnv(fastApiPort, nextjsPort);
+    await initializeDesktopSession(session.defaultSession, [
+      `${localhost}:${nextjsPort}`,
+      `${localhost}:${fastApiPort}`,
+    ]);
+    setupIpcHandlers(
+      getLiveMainWindow,
+      process.env.NEXT_PUBLIC_URL || "",
     );
-    await forceQuitApp(1);
-    return;
-  }
-  if (isStopping) {
-    return;
-  }
-  const mainWindow = getLiveMainWindow();
-  if (!mainWindow || mainWindow.webContents.isDestroyed()) {
-    return;
-  }
 
-  try {
-    const appPath = isDisableAuthEnabledValue(process.env.DISABLE_AUTH)
-      ? "/upload"
-      : "";
-    await mainWindow.loadURL(`${localhost}:${nextjsPort}${appPath}`);
-  } catch (error) {
-    if (mainWindow.isDestroyed()) {
+    await finishChromiumCacheRecovery(
+      electronAppPaths.userDataDir,
+      chromiumCacheRecovery,
+    );
+    updateSentryRuntimeContext(chromiumCacheRecovery);
+
+    // Create the main window hidden; the app splash handles the visible startup state.
+    createWindow(`${localhost}:${nextjsPort}`);
+
+    try {
+      syncUserConfigFromEnv();
+    } catch (error) {
+      safeWarn("[Presenton] Failed to persist startup user config", error);
+    }
+
+    try {
+      await startServers(fastApiPort, nextjsPort);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      dialog.showErrorBox(
+        "Presenton Could Not Start",
+        `The local application servers failed to start.\n\n${detail}`,
+      );
+      await forceQuitApp(1);
       return;
     }
-    safeWarn("[Presenton] Failed to load application URL", error);
-    return;
-  }
+    if (isStopping) {
+      return;
+    }
+    const mainWindow = getLiveMainWindow();
+    if (!mainWindow || mainWindow.webContents.isDestroyed()) {
+      return;
+    }
 
-  // Begin polling the version server for available updates
-  const updateWindow = getLiveMainWindow();
-  if (updateWindow && !updateWindow.webContents.isDestroyed()) {
-    safeStderrWrite("[Presenton] Starting update checker...\n");
-    startUpdateChecker(updateWindow);
-  }
-});
+    try {
+      const appPath = isDisableAuthEnabledValue(process.env.DISABLE_AUTH)
+        ? "/upload"
+        : "";
+      await mainWindow.loadURL(`${localhost}:${nextjsPort}${appPath}`);
+    } catch (error) {
+      if (mainWindow.isDestroyed()) {
+        return;
+      }
+      safeWarn("[Presenton] Failed to load application URL", error);
+      return;
+    }
 
-app.on("window-all-closed", async () => {
-  await forceQuitApp(0);
-});
+    // Begin polling the version server for available updates
+    const updateWindow = getLiveMainWindow();
+    if (updateWindow && !updateWindow.webContents.isDestroyed()) {
+      safeStderrWrite("[Presenton] Starting update checker...\n");
+      startUpdateChecker(updateWindow);
+    }
+  });
 
-app.on("before-quit", async (event) => {
-  if (isStopping) return;
-  event.preventDefault();
-  await forceQuitApp(0);
-});
+  app.on("window-all-closed", async () => {
+    await forceQuitApp(0);
+  });
 
-app.on("will-quit", async (event) => {
-  if (isStopping) return;
-  event.preventDefault();
-  await forceQuitApp(0);
-});
+  app.on("before-quit", async (event) => {
+    if (isStopping) return;
+    event.preventDefault();
+    await forceQuitApp(0);
+  });
+
+  app.on("will-quit", async (event) => {
+    if (isStopping) return;
+    event.preventDefault();
+    await forceQuitApp(0);
+  });
 }

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FASTAPI_DIR = REPO_ROOT / "servers" / "fastapi"
-NEXT_DIR = REPO_ROOT / "servers" / "nextjs"
+FASTAPI_DIR = REPO_ROOT / "packages" / "backend" / "app" / "legacy"
+NEXT_DIR = REPO_ROOT / "packages" / "frontend"
 NOTICE_PATH = REPO_ROOT / "NOTICE"
 
 PY_LICENSE_CANDIDATES = [
@@ -303,7 +303,7 @@ def main():
         else:
             print(f"Warning: site-packages not found under {venv}", file=sys.stderr)
     else:
-        print("Warning: Python venv not found. Set NOTICE_PYTHON_VENV or create servers/fastapi/.venv", file=sys.stderr)
+        print("Warning: Python venv not found. Set NOTICE_PYTHON_VENV or create packages/backend/app/legacy/.venv", file=sys.stderr)
 
     # Node scan
     node_modules_dir = Path(args.node_modules or os.environ.get("NOTICE_NODE_MODULES") or (NEXT_DIR / "node_modules"))

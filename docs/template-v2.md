@@ -165,12 +165,12 @@ JSON responses used for layout selection and content generation.
 
 ## Implementation map
 
-- `servers/fastapi/api/v1/ppt/endpoints/template.py` — template APIs,
+- `packages/backend/app/legacy/api/v1/ppt/endpoints/template.py` — template APIs,
   asynchronous task orchestration, persistence, and retry handling.
-- `servers/fastapi/templates/v2/certified_generation.py` — multi-pass vision
+- `packages/backend/app/legacy/templates/v2/certified_generation.py` — multi-pass vision
   analysis, validation, compilation, and fallbacks.
-- `servers/fastapi/templates/v2/schema.py` — editable content schema generation.
-- `servers/fastapi/templates/v2/theme.py` — color/font profiling and semantic
+- `packages/backend/app/legacy/templates/v2/schema.py` — editable content schema generation.
+- `packages/backend/app/legacy/templates/v2/theme.py` — color/font profiling and semantic
   theme generation.
-- `servers/fastapi/api/v1/ppt/endpoints/presentation.py` — layout selection,
+- `packages/backend/app/legacy/api/v1/ppt/endpoints/presentation.py` — layout selection,
   content generation, hydration, asset processing, persistence, and export.

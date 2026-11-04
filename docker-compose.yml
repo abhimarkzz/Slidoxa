@@ -12,7 +12,7 @@ services:
       - "1455:1455"
     volumes:
       - ./app_data:/app_data
-      - ./servers/fastapi/templates:/app/servers/fastapi/templates:ro
+      - ./packages/backend/app/legacy/templates:/app/servers/fastapi/templates:ro
     environment:
       - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
       - PRESENTON_HOST_HTTP_PORT=${PRESENTON_HOST_HTTP_PORT:-5001}
@@ -532,7 +532,62 @@ services:
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}
       - RESET_AUTH=${RESET_AUTH:-}
 
+  # ------------------------------------------------------------------
+  # Slidoxa Phase 2 services (profile: core). Runs in parallel with the
+  # upstream Presenton `production` / `development` services above and
+  # shares none of their volumes, ports or env vars.
+  # ------------------------------------------------------------------
+
+  db:
+    image: pgvector/pgvector:pg16
+    profiles: ["core"]
+    environment:
+      POSTGRES_USER: ogs
+      POSTGRES_DB: ogs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ogs -d ogs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  slidoxa-backend:
+    profiles: ["core"]
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile.slidoxa
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      MASTER_KEY_SECRET: ${MASTER_KEY_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "10001:10001"
+
+  slidoxa-frontend:
+    profiles: ["core"]
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile.slidoxa
+    depends_on:
+      - slidoxa-backend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://slidoxa-backend:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+
 volumes:
   presenton_root_node_modules:
   presenton_document_extraction_liteparse:
   presenton_presentation_export:
+  pgdata:

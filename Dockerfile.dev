@@ -65,9 +65,9 @@ RUN rm -rf /app/presentation-export \
     && test -f /app/presentation-export/runner.mjs \
     && test -f /app/presentation-export/node_modules/@presenton/export-core/dist/index.js
 
-# Bind mount `.:/app` hides any .venv under servers/fastapi at runtime — install deps into
+# Bind mount `.:/app` hides image files under /app/servers/fastapi at runtime — install deps into
 # system site-packages (same interpreter `start.js` uses as `python`).
-COPY servers/fastapi /app/servers/fastapi
+COPY packages/backend/app/legacy /app/servers/fastapi
 COPY templates /app/templates
 WORKDIR /app/servers/fastapi
 RUN --mount=type=cache,target=/root/.cache/uv \

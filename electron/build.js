@@ -10,12 +10,30 @@ const {
   validateExportRuntime,
 } = require("../scripts/sync-presentation-export.cjs")
 
-const APP_ID = "com.presenton.presenton"
-const TEAM_ID = "S6W5C54KL6"
+const APP_ID = "io.slidoxa.app"
+// Slidoxa Apple Developer Team ID. There is no default: unsigned
+// local builds do not need it; signed/notarized builds must set
+// SLIDOXA_TEAM_ID (or APPLE_TEAM_ID) to the Slidoxa maintainer's
+// own Apple Developer Team ID. Reusing another organisation's Team
+// ID is a signing-identity violation and this file no longer carries
+// one as a fallback.
+const TEAM_ID =
+  process.env.SLIDOXA_TEAM_ID || process.env.APPLE_TEAM_ID || ""
 const macTarget = process.env.PRESENTON_MAC_TARGET
 const isMasBuild = macTarget === "mas" || macTarget === "mas-dev"
 const isDirectMacBuild = !isMasBuild && (process.platform === "darwin" || !!macTarget)
 const requireDirectMacSigning = process.env.PRESENTON_REQUIRE_MAC_SIGNING === "1"
+if (requireDirectMacSigning && !TEAM_ID) {
+  throw new Error(
+    "Signed macOS builds require SLIDOXA_TEAM_ID (or APPLE_TEAM_ID) in the environment. " +
+      "Set it to your Slidoxa Apple Developer Team ID. Unsigned local builds do not need it."
+  )
+}
+if (macTarget === "mas" && !TEAM_ID) {
+  throw new Error(
+    "MAS builds require SLIDOXA_TEAM_ID (or APPLE_TEAM_ID) in the environment."
+  )
+}
 const masDevProvisioningProfile = resolveProvisioningProfileForTarget({
   target: "mas-dev",
   label: "MAS development",
@@ -654,16 +672,16 @@ function getFastApiBinaryName(platform = process.platform) {
 }
 
 function findNextJsStandaloneServer(nextjsRoot) {
-  const directScript = path.join(nextjsRoot, "server.js")
-  if (fs.existsSync(directScript)) {
-    return directScript
+  const candidates = [
+    path.join(nextjsRoot, "server.js"),
+    path.join(nextjsRoot, "packages", "frontend", "server.js"),
+    path.join(nextjsRoot, "servers", "nextjs", "server.js"),
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
   }
-
-  const nestedScript = path.join(nextjsRoot, "servers", "nextjs", "server.js")
-  if (fs.existsSync(nestedScript)) {
-    return nestedScript
-  }
-
   return null
 }
 
@@ -873,14 +891,16 @@ function findDirectoriesNamed(root, name) {
 
 const config = {
   appId: APP_ID,
-  productName: "Presenton",
+  productName: "Slidoxa",
   asar: true,
   asarUnpack: [
     "resources/**",
     // LiteParse runs from FastAPI via Electron-as-Node and needs real package dirs.
     "node_modules/**",
   ],
-  copyright: "Copyright © 2026 Presenton",
+  // Slidoxa is an Apache-2.0 derivative of Presenton. See NOTICE for the
+  // full upstream + third-party attribution.
+  copyright: "Copyright © 2026 Slidoxa contributors; portions © 2024–2026 Presenton contributors.",
   directories: {
     output: "dist",
     buildResources: "build",
@@ -898,7 +918,7 @@ const config = {
   ],
   afterPack,
   mac: {
-    artifactName: "Presenton-${version}.${ext}",
+    artifactName: "Slidoxa-${version}.${ext}",
     target: [macTarget || "dmg"],
     category: "public.app-category.productivity",
     hardenedRuntime: !isMasBuild,
@@ -937,7 +957,7 @@ const config = {
     additionalArguments: masSigningExtraArgs,
   },
   linux: {
-    artifactName: "Presenton-${version}.${ext}",
+    artifactName: "Slidoxa-${version}.${ext}",
     target: ["AppImage", "deb"],
     icon: "build/icons",
     category: "Office",
@@ -946,10 +966,15 @@ const config = {
     afterInstall: "build/after-install.tpl",
   },
   win: {
-    target: ["nsis", "appx"],
+    // Default to NSIS only. AppX is left configured but off by default
+    // because the stored publisher identity is Presenton's and Slidoxa
+    // has no Microsoft Partner Center publisher yet. Opt in with
+    // PRESENTON_MAC_TARGET-style env or by adding "appx" back once a
+    // Slidoxa publisher is registered.
+    target: ["nsis"],
     icon: "build/icon.ico",
-    artifactName: "Presenton-${version}.${ext}",
-    executableName: "Presenton",
+    artifactName: "Slidoxa-${version}.${ext}",
+    executableName: "Slidoxa",
   },
   nsis: {
     oneClick: false,
@@ -961,20 +986,25 @@ const config = {
     installerHeaderIcon: "build/icon.ico",
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
-    shortcutName: "Presenton",
-    uninstallDisplayName: "Presenton",
+    shortcutName: "Slidoxa",
+    uninstallDisplayName: "Slidoxa",
   },
   dmg: {
     sign: shouldSignDirectMacDmg,
     size: "2300m",
   },
+  // Microsoft Store (AppX) identity remains Presenton's upstream
+  // registration because Slidoxa has no Microsoft Partner Center
+  // publisher of its own yet. Building `appx` here is therefore not
+  // valid for Slidoxa distribution; unsigned `nsis` builds are
+  // unaffected. Register a Slidoxa publisher, then replace the
+  // identityName/publisher/applicationId with the new values.
   appx: {
     identityName: "PresentonAI.Presenton",
     publisher: "CN=8A2C57B5-F1C6-473A-93EE-2E9B72134341",
-    displayName: "Presenton",
+    displayName: "Slidoxa",
     publisherDisplayName: "Presenton Inc.",
     applicationId: "PresentonAI.Presenton",
-    
   },
 }
 

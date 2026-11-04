@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400" role="img" aria-labelledby="title desc">
+  <title id="title">Slidoxa wordmark — light background</title>
+  <desc id="desc">Editable wordmark template. Uses Plus Jakarta Sans Bold, with a violet x.</desc>
+  <text x="800" y="268" text-anchor="middle" font-family="'Plus Jakarta Sans', Inter, Arial, sans-serif" font-size="250" font-weight="700" letter-spacing="-8">
+    <tspan fill="#0F1020">slido</tspan><tspan fill="#7A5AF8">x</tspan><tspan fill="#0F1020">a</tspan>
+  </text>
+</svg>

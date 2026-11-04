@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Slidoxa icon — three stacked slide layers. License: Apache 2.0 (same as the project). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F1020"/>
+      <stop offset="1" stop-color="#1B1D3A"/>
+    </linearGradient>
+    <linearGradient id="slidePrimary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8E73FF"/>
+      <stop offset="1" stop-color="#5A3EE0"/>
+    </linearGradient>
+    <linearGradient id="slideAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+  <!-- Back slide: accent blue -->
+  <rect x="236" y="260" width="620" height="420" rx="56" ry="56" fill="url(#slideAccent)" opacity="0.75"/>
+  <!-- Middle slide: primary violet -->
+  <rect x="192" y="320" width="620" height="420" rx="56" ry="56" fill="url(#slidePrimary)" opacity="0.92"/>
+  <!-- Front slide: solid primary with content lines -->
+  <rect x="148" y="380" width="620" height="420" rx="56" ry="56" fill="#FFFFFF"/>
+  <rect x="200" y="452" width="420" height="36" rx="18" ry="18" fill="#7A5AF8"/>
+  <rect x="200" y="524" width="320" height="22" rx="11" ry="11" fill="#0F1020" opacity="0.55"/>
+  <rect x="200" y="572" width="380" height="22" rx="11" ry="11" fill="#0F1020" opacity="0.45"/>
+  <rect x="200" y="620" width="260" height="22" rx="11" ry="11" fill="#0F1020" opacity="0.35"/>
+  <rect x="200" y="692" width="180" height="60" rx="18" ry="18" fill="#60A5FA"/>
+</svg>

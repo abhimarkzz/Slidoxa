@@ -14,7 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/presenton/presenton
+  # Slidoxa publishes to its own GHCR image. The upstream Presenton
+  # image lives at ghcr.io/presenton/presenton and is not written to
+  # by this fork.
+  IMAGE_NAME: ghcr.io/abhimarkzz/slidoxa
   MOVING_TAG: dev
 
 jobs:

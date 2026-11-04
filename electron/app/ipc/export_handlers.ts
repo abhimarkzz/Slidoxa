@@ -9,7 +9,7 @@ import {
 } from "../utils/constants";
 import fs from "fs";
 import path from "path";
-
+import type { IpcMainInvokeEvent } from "electron";
 import { showFileDownloadedDialog } from "../utils/dialog";
 import { ChildProcess, spawn } from "child_process";
 import { safeError, safeLog } from "../utils/safe-console";
@@ -22,8 +22,11 @@ import {
   removeBrokenExportChromiumCaches,
   resolveLaunchableExportChromiumPath,
 } from "../utils/export-chromium";
+import { moveExportFile } from "../utils/export-file-transfer";
 import { resolveExportSpawnTarget } from "../utils/export-msix-runtime";
 import { desktopCookieHeader } from "../utils/desktop-auth";
+import { resolveTrustedExportFilePath } from "../utils/export-file-security";
+import { validateExportRequest } from "../utils/export-request-validation";
 
 type RuntimeCandidate = {
   command: string;
@@ -53,128 +56,271 @@ export async function stopActiveExportProcesses(): Promise<void> {
   );
 }
 
-export function setupExportHandlers() {
-  ipcMain.handle("export-presentation", async (_, id: string, title: string, exportAs: "pptx" | "pdf") => {
-    let exportTempDir: string | undefined;
-    try {
-      await removeBrokenExportChromiumCaches();
-      if (!isExportChromiumAvailable()) {
+
+export function setupExportHandlers(
+  validateIpcSender: (event: IpcMainInvokeEvent) => void,
+) {
+  ipcMain.handle(
+    "export-presentation",
+    async (
+      event,
+      id: unknown,
+      title: unknown,
+      exportAs: unknown,
+    ) => {
+      // Verify the IPC sender before processing any arguments.
+      validateIpcSender(event);
+
+      // Validate all renderer-controlled arguments.
+      const validation = validateExportRequest(id, title, exportAs);
+
+      if (!validation.success) {
         return {
           success: false,
-          message:
-            isDev
+          message: "Invalid export request.",
+        };
+      }
+
+      // Only use validated values from this point onwards.
+      const validatedId = validation.id;
+      const validatedTitle = validation.title;
+      const validatedFormat = validation.format;
+
+      let exportTempDir: string | undefined;
+
+      try {
+        await removeBrokenExportChromiumCaches();
+
+        if (!isExportChromiumAvailable()) {
+          return {
+            success: false,
+            message: isDev
               ? "The export runtime is missing. Run npm run setup:desktop-runtime in the electron directory, then restart the desktop development app."
               : "The export browser is missing from this installation. Reinstall Presenton to restore export support.",
+          };
+        }
+
+        addMainBreadcrumb(
+          "export",
+          "electron.ipc_export.start",
+          {
+            id: validatedId,
+            title: validatedTitle,
+            exportAs: validatedFormat,
+            memory: memorySnapshotMb(),
+          },
+        );
+
+        const params = new URLSearchParams({
+          id: validatedId,
+        });
+
+        if (process.env.NEXT_PUBLIC_FAST_API) {
+          params.set(
+            "fastapiUrl",
+            process.env.NEXT_PUBLIC_FAST_API,
+          );
+        }
+
+        const pptUrl = `${process.env.NEXT_PUBLIC_URL}/pdf-maker?${params.toString()}`;
+
+        const exportTask = {
+          type: "export",
+          url: pptUrl,
+          format: validatedFormat,
+          title: validatedTitle,
+          fastapiUrl: process.env.NEXT_PUBLIC_FAST_API,
+          cookieHeader: desktopCookieHeader(),
         };
-      }
 
-      addMainBreadcrumb("export", "electron.ipc_export.start", {
-        id,
-        title,
-        exportAs,
-        memory: memorySnapshotMb(),
-      });
-      const params = new URLSearchParams({ id });
-      if (process.env.NEXT_PUBLIC_FAST_API) {
-        params.set("fastapiUrl", process.env.NEXT_PUBLIC_FAST_API);
-      }
-      const pptUrl = `${process.env.NEXT_PUBLIC_URL}/pdf-maker?${params.toString()}`;
+        const tempDir = getTempDir();
+        const appDataDir = getAppDataDir();
 
-      const exportTask = {
-        type: "export",
-        url: pptUrl,
-        format: exportAs,
-        title: title,
-        fastapiUrl: process.env.NEXT_PUBLIC_FAST_API,
-        cookieHeader: desktopCookieHeader(),
-      };
+        exportTempDir = await fs.promises.mkdtemp(
+          path.join(tempDir, "export-"),
+        );
 
-      const tempDir = getTempDir();
-      const appDataDir = getAppDataDir();
-      exportTempDir = await fs.promises.mkdtemp(path.join(tempDir, "export-"));
+        const exportTaskPath = path.join(
+          exportTempDir,
+          "export_task.json",
+        );
 
-      const exportTaskPath = path.join(exportTempDir, "export_task.json");
-      await fs.promises.writeFile(exportTaskPath, JSON.stringify(exportTask), { flag: "wx", mode: 0o600 });
+        await fs.promises.writeFile(
+          exportTaskPath,
+          JSON.stringify(exportTask),
+          {
+            flag: "wx",
+            mode: 0o600,
+          },
+        );
 
-      const packagedExportRoot = path.join(resourceBaseDir, "resources", "export");
-      const packagedExportScriptPath = path.join(packagedExportRoot, "runner.mjs");
-      const { scriptPath: exportScriptPath } = await resolveExportSpawnTarget(
-        packagedExportRoot,
-        packagedExportScriptPath,
-      );
-      safeLog("[Export] Spawning export task with config:", {
-        exportAs,
-        id,
-        title,
-        pptUrl,
-        exportTaskPath,
-        exportScriptPath,
-        NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
-        NEXT_PUBLIC_FAST_API: process.env.NEXT_PUBLIC_FAST_API,
-      });
-      const chromiumExecutablePath = await resolveLaunchableExportChromiumPath();
-      if (!chromiumExecutablePath) {
+        const packagedExportRoot = path.join(
+          resourceBaseDir,
+          "resources",
+          "export",
+        );
+
+        const packagedExportScriptPath = path.join(
+          packagedExportRoot,
+          "runner.mjs",
+        );
+
+        const { scriptPath: exportScriptPath } =
+          await resolveExportSpawnTarget(
+            packagedExportRoot,
+            packagedExportScriptPath,
+          );
+
+        safeLog(
+          "[Export] Spawning export task with config:",
+          {
+            exportAs: validatedFormat,
+            id: validatedId,
+            title: validatedTitle,
+            pptUrl,
+            exportTaskPath,
+            exportScriptPath,
+            NEXT_PUBLIC_URL: process.env.NEXT_PUBLIC_URL,
+            NEXT_PUBLIC_FAST_API:
+              process.env.NEXT_PUBLIC_FAST_API,
+          },
+        );
+
+        const chromiumExecutablePath =
+          await resolveLaunchableExportChromiumPath();
+
+        if (!chromiumExecutablePath) {
+          return {
+            success: false,
+            message:
+              "Export could not prepare Chromium for this Microsoft Store install. Restart Presenton and try again.",
+          };
+        }
+
+        const puppeteerTempDir = path.join(
+          tempDir,
+          "puppeteer",
+        );
+
+        const puppeteerCacheDir = path.join(
+          getCacheDir(),
+          "puppeteer",
+        );
+
+        await Promise.all([
+          fs.promises.mkdir(puppeteerTempDir, {
+            recursive: true,
+          }),
+          fs.promises.mkdir(puppeteerCacheDir, {
+            recursive: true,
+          }),
+        ]);
+
+        const baseExportEnv = {
+          ...process.env,
+          TEMP_DIRECTORY: tempDir,
+          APP_DATA_DIRECTORY: appDataDir,
+          NODE_ENV: "development",
+          PUPPETEER_EXECUTABLE_PATH:
+            chromiumExecutablePath,
+          PUPPETEER_CACHE_DIR: puppeteerCacheDir,
+          PUPPETEER_TMP_DIR: puppeteerTempDir,
+        };
+
+        const responsePath = exportTaskPath.replace(
+          ".json",
+          ".response.json",
+        );
+
+        const responseRaw =
+          await runExportTaskAndReadResponse(
+            exportScriptPath,
+            exportTaskPath,
+            responsePath,
+            baseExportEnv,
+          );
+
+        const responseData: unknown = JSON.parse(responseRaw);
+
+        const exportFilePath =
+          await resolveTrustedExportFilePath(
+            responseData,
+            appDataDir,
+            validatedFormat,
+          );
+
+        if (!exportFilePath) {
+          return {
+            success: false,
+            message:
+              "Export finished but output file was not found.",
+          };
+        }
+
+        const requestedDestination = path.join(
+          getDownloadsDir(),
+          path.basename(exportFilePath),
+        );
+
+        const destinationPath = await moveExportFile(
+          exportFilePath,
+          requestedDestination,
+        );
+
+        showFileDownloadedDialogInBackground(
+          destinationPath,
+        );
+
+        addMainBreadcrumb(
+          "export",
+          "electron.ipc_export.finish",
+          {
+            id: validatedId,
+            exportAs: validatedFormat,
+            success: true,
+            memory: memorySnapshotMb(),
+          },
+        );
+
+        return {
+          success: true,
+          message: "Export completed.",
+        };
+      } catch (error: any) {
+        safeError(
+          "[Export] Error exporting presentation:",
+          error,
+        );
+
+        addMainBreadcrumb(
+          "export",
+          "electron.ipc_export.error",
+          {
+            id: validatedId,
+            exportAs: validatedFormat,
+            message: error?.message,
+            memory: memorySnapshotMb(),
+          },
+        );
+
         return {
           success: false,
-          message:
-            "Export could not prepare Chromium for this Microsoft Store install. Restart Presenton and try again.",
+          message: error?.message ?? "Export failed.",
         };
+      } finally {
+        if (exportTempDir) {
+          await fs.promises
+            .rm(exportTempDir, {
+              recursive: true,
+              force: true,
+            })
+            .catch(() => { });
+        }
       }
-      const puppeteerTempDir = path.join(tempDir, "puppeteer");
-      const puppeteerCacheDir = path.join(getCacheDir(), "puppeteer");
-      await Promise.all([
-        fs.promises.mkdir(puppeteerTempDir, { recursive: true }),
-        fs.promises.mkdir(puppeteerCacheDir, { recursive: true }),
-      ]);
-      const baseExportEnv = {
-        ...process.env,
-        TEMP_DIRECTORY: tempDir,
-        APP_DATA_DIRECTORY: appDataDir,
-        NODE_ENV: "development",
-        PUPPETEER_EXECUTABLE_PATH: chromiumExecutablePath,
-        PUPPETEER_CACHE_DIR: puppeteerCacheDir,
-        PUPPETEER_TMP_DIR: puppeteerTempDir,
-      };
-      const responsePath = exportTaskPath.replace(".json", ".response.json");
-      const responseRaw = await runExportTaskAndReadResponse(
-        exportScriptPath,
-        exportTaskPath,
-        responsePath,
-        baseExportEnv
-      );
-      const responseData = JSON.parse(responseRaw);
-      const exportFilePath = resolveExportedFilePath(responseData);
-
-      if (!exportFilePath) {
-        return { success: false, message: "Export finished but output file was not found." };
-      }
-
-      const destinationPath = path.join(getDownloadsDir(), path.basename(exportFilePath));
-      await moveFile(exportFilePath, destinationPath);
-      showFileDownloadedDialogInBackground(destinationPath);
-      addMainBreadcrumb("export", "electron.ipc_export.finish", {
-        id,
-        exportAs,
-        success: true,
-        memory: memorySnapshotMb(),
-      });
-      return { success: true, message: "Export completed." };
-    } catch (error: any) {
-      safeError("[Export] Error exporting presentation:", error);
-      addMainBreadcrumb("export", "electron.ipc_export.error", {
-        id,
-        exportAs,
-        message: error?.message,
-        memory: memorySnapshotMb(),
-      });
-      return { success: false, message: error?.message ?? "Export failed." };
-    } finally {
-      if (exportTempDir) {
-        await fs.promises.rm(exportTempDir, { recursive: true, force: true }).catch(() => {});
-      }
-    }
-  });
+    },
+  );
 }
+
 
 function getExportRuntimeCandidates(): RuntimeCandidate[] {
   const candidates: RuntimeCandidate[] = [];
@@ -445,39 +591,49 @@ async function runExportTaskOnce(
   }
 }
 
-function resolveExportedFilePath(responseData: any): string | null {
-  if (responseData?.path && typeof responseData.path === "string") {
-    return path.isAbsolute(responseData.path)
-      ? responseData.path
-      : path.join(getAppDataDir(), responseData.path);
-  }
 
-  if (responseData?.url && typeof responseData.url === "string") {
+
+
+async function moveFile(sourcePath: string, destinationPath: string): Promise<string> {
+  const destinationDirectory = path.dirname(destinationPath);
+  const extension = path.extname(destinationPath);
+  const basename = path.basename(destinationPath, extension);
+
+  await fs.promises.mkdir(destinationDirectory, { recursive: true });
+
+  // Exclusive creation prevents overwriting existing downloads.
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidate =
+      attempt === 0
+        ? destinationPath
+        : path.join(
+          destinationDirectory,
+          `${basename} (${attempt})${extension}`,
+        );
+
     try {
-      const parsed = new URL(responseData.url);
-      if (parsed.protocol === "file:") {
-        const filePath = decodeURIComponent(parsed.pathname);
-        if (process.platform === "win32" && filePath.startsWith("/")) {
-          return filePath.slice(1);
-        }
-        return filePath;
+      await fs.promises.copyFile(
+        sourcePath,
+        candidate,
+        fs.constants.COPYFILE_EXCL,
+      );
+
+      try {
+        await fs.promises.unlink(sourcePath);
+      } catch (error) {
+        await fs.promises.unlink(candidate).catch(() => { });
+        throw error;
       }
-    } catch {
-      return null;
-    }
-  }
 
-  return null;
-}
+      return candidate;
+    } catch (error: any) {
+      if (error?.code === "EEXIST") {
+        continue;
+      }
 
-async function moveFile(sourcePath: string, destinationPath: string) {
-  try {
-    await fs.promises.rename(sourcePath, destinationPath);
-  } catch (error: any) {
-    if (error?.code !== "EXDEV") {
       throw error;
     }
-    await fs.promises.copyFile(sourcePath, destinationPath);
-    await fs.promises.unlink(sourcePath);
   }
+
+  throw new Error("Unable to find an available export filename.");
 }

@@ -15,6 +15,32 @@ const packageJson = JSON.parse(
 const expectedVersion = String(packageJson.exportVersion || "").replace(/^v/, "");
 const cliArgs = new Set(process.argv.slice(2));
 
+function rebaseAbsoluteSymlinks(targetRoot, sourceRoot) {
+  // fs.cpSync preserves symlink targets verbatim. Absolute links that point
+  // inside the source tree become machine-specific in the copy, so rewrite
+  // them to relative paths within targetRoot.
+  const sourcePrefix = path.resolve(sourceRoot) + path.sep;
+  const resolvedSourceRoot = path.resolve(sourceRoot);
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = fs.readlinkSync(full);
+        if (!path.isAbsolute(target)) continue;
+        if (target !== resolvedSourceRoot && !target.startsWith(sourcePrefix)) continue;
+        const relFromSource = path.relative(resolvedSourceRoot, target);
+        const rebased = path.join(targetRoot, relFromSource);
+        const newTarget = path.relative(path.dirname(full), rebased);
+        fs.unlinkSync(full);
+        fs.symlinkSync(newTarget, full);
+      } else if (entry.isDirectory()) {
+        walk(full);
+      }
+    }
+  };
+  walk(targetRoot);
+}
+
 function installedVersion(root) {
   const packagePath = path.join(
     root,
@@ -66,6 +92,7 @@ function main() {
   fs.rmSync(targetRoot, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
   fs.cpSync(sourceRoot, targetRoot, { recursive: true, force: true });
+  rebaseAbsoluteSymlinks(targetRoot, sourceRoot);
   const sourceVersion = installedVersion(sourceRoot);
   if (!sourceVersion) {
     throw new Error("The synced export-core package is missing from presentation-export.");

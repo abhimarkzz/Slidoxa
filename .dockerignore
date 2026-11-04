@@ -11,18 +11,22 @@ node_modules
 **/*.pyc
 **/debug
 **/fastembed_cache
+.env
+electron/dist
+electron/app_dist
+packages/frontend/.next-build
 **/chroma
 .cache
 app_data
 presentation-export
-servers/fastapi/tests
-servers/fastapi/presenton_backend.egg-info
-servers/fastapi/.python-version
-servers/fastapi/placeholder
-servers/nextjs/cypress
-servers/nextjs/cypress.config.ts
-servers/nextjs/README.md
-servers/nextjs/tsconfig.tsbuildinfo
+packages/backend/app/legacy/tests
+packages/backend/app/legacy/presenton_backend.egg-info
+packages/backend/app/legacy/.python-version
+packages/backend/app/legacy/placeholder
+packages/frontend/cypress
+packages/frontend/cypress.config.ts
+packages/frontend/README.md
+packages/frontend/tsconfig.tsbuildinfo
 **/*.cy.ts
 **/*.cy.tsx
 
@@ -34,11 +38,11 @@ electron/resources/*
 electron/resources/document-extraction/*
 !electron/resources/document-extraction/liteparse_runner.mjs
 
-servers/fastapi/tmp
-servers/fastapi/debug
-servers/fastapi/.venv
+packages/backend/app/legacy/tmp
+packages/backend/app/legacy/debug
+packages/backend/app/legacy/.venv
 
-servers/nextjs/node_modules
-servers/nextjs/.next
+packages/frontend/node_modules
+packages/frontend/.next
 
 container.db

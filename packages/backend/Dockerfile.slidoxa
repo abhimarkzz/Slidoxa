@@ -1,0 +1,53 @@
+# Slidoxa Phase 2 backend container.
+# Separate from the upstream Presenton Dockerfile at repo root; shares no
+# volumes with legacy services.
+FROM python:3.11-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_LINK_MODE=copy
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir "uv>=0.6"
+
+# Non-root principal; UID matches the compose service.
+RUN groupadd --system --gid 10001 slidoxa \
+    && useradd --system --uid 10001 --gid slidoxa --home-dir /app slidoxa
+
+WORKDIR /app
+
+# Copy the pinned backend manifest first so uv can cache its resolver
+# output across source changes. The legacy pyproject + uv.lock are the
+# authoritative dependency pin for the whole backend tree today.
+COPY packages/backend/app/legacy/pyproject.toml packages/backend/app/legacy/uv.lock ./deps/
+RUN uv export --frozen --no-dev --no-emit-project \
+        --directory ./deps \
+        -o /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && rm -rf ./deps /tmp/requirements.txt
+
+# Slidoxa-specific deltas not yet carried by the inherited lockfile.
+# (alembic, sqlalchemy, psycopg[binary], cryptography, httpx, pytest
+#  are already pinned via packages/backend/app/legacy/uv.lock.)
+RUN uv pip install --system \
+      "argon2-cffi>=23.1" \
+      "PyJWT>=2.9"
+
+# Alembic + Slidoxa sources. Scaffolds under app/{api,security,blackboard}
+# are empty today; app/legacy is the only runnable code.
+COPY packages/backend/alembic.ini ./alembic.ini
+COPY packages/backend/migrations ./migrations
+COPY packages/backend/app ./app
+
+ENV PYTHONPATH=/app/app/legacy:/app
+
+USER slidoxa
+
+EXPOSE 8000
+
+# Slidoxa native FastAPI entrypoint (packages/backend/app/api/main.py).
+CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

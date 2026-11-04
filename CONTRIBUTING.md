@@ -1,15 +1,16 @@
-# Contributing to Presenton
+# Contributing to Slidoxa
 
-Welcome! 🚀  
-Thanks for helping improve **Presenton — the open-source AI presentation generator.**
+Thanks for your interest in contributing to **Slidoxa**, an AI
+presentation workspace derived from Presenton under the Apache
+License 2.0. Slidoxa preserves upstream copyright and third-party
+notices; contributions must do the same.
 
-## Quick Links
+## Quick links
 
-- **GitHub:** https://github.com/presenton/presenton
-- **Docs:** https://docs.presenton.ai
-- **Website:** https://presenton.ai
-- **Discord:** https://discord.gg/9ZsKKxudNE
-- **X:** https://x.com/presentonai
+- **GitHub:** https://github.com/abhimarkzz/Slidoxa
+- **Upstream origin:** https://github.com/presenton/presenton
+  (tracked here as the `presenton-source` Git remote so security
+  fixes can be pulled in)
 
 ---
 
@@ -181,5 +182,5 @@ CODE_OF_CONDUCT.md
 
 ---
 
-Thanks for helping make **Presenton better for everyone.**
+Thanks for helping make **Slidoxa** better for everyone.
 ```

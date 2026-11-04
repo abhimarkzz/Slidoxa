@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: servers/fastapi
+        working-directory: packages/backend/app/legacy
     env:
       APP_DATA_DIRECTORY: /tmp/presenton-app-data
       TEMP_DIRECTORY: /tmp/presenton-temp
@@ -63,7 +63,7 @@ jobs:
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           enable-cache: true
-          cache-dependency-glob: servers/fastapi/uv.lock
+          cache-dependency-glob: packages/backend/app/legacy/uv.lock
 
       - name: Install locked dependencies
         run: uv sync --locked --dev
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: servers/nextjs
+        working-directory: packages/frontend
 
     steps:
       - name: Checkout code
@@ -90,7 +90,7 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: servers/nextjs/package-lock.json
+          cache-dependency-path: packages/frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
