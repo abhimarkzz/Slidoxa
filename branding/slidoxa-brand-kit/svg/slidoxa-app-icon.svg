@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Slidoxa app icon</title>
+  <desc id="desc">A custom continuous S-shaped ribbon in violet on a deep navy rounded-square background.</desc>
+  <rect width="1024" height="1024" rx="232" fill="#0F1020"/>
+  <!-- Custom S ribbon: deliberately drawn as one continuous vector stroke. -->
+  <path d="M 748 268
+           C 681 196 586 162 470 162
+           C 326 162 244 226 244 336
+           C 244 449 337 487 493 525
+           C 646 562 780 607 780 724
+           C 780 842 671 900 520 900
+           C 396 900 301 856 231 783"
+        fill="none" stroke="#7A5AF8" stroke-width="132"
+        stroke-linecap="butt" stroke-linejoin="round"/>
+</svg>

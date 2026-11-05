@@ -1,0 +1,46 @@
+# Slidoxa Phase 2 frontend container.
+# Builds packages/frontend into a standalone Next.js server. Separate
+# from upstream Presenton production image.
+FROM node:22-bookworm-slim AS builder
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /build
+
+COPY packages/frontend/package.json packages/frontend/package-lock.json* ./
+# The committed lockfile is not currently in sync with package.json;
+# switch to `npm install --no-audit --no-fund` so the image build is
+# reproducible from package.json alone. Re-pin with `npm ci` once a
+# refreshed lockfile lands.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-audit --no-fund
+
+COPY packages/frontend ./
+RUN npm run build
+
+FROM node:22-bookworm-slim AS runner
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
+
+RUN groupadd --system --gid 10001 slidoxa \
+    && useradd --system --uid 10001 --gid slidoxa --home-dir /app slidoxa
+
+WORKDIR /app
+
+# `output: "standalone"` with distDir `.next-build` emits the server
+# inside a subdirectory named after the build context root, which in
+# this stage is `/build`; the resulting entrypoint is at
+# `<standalone>/build/server.js`. Static assets and public/ must sit
+# next to that server for Next's runtime filesystem lookup to find
+# them.
+COPY --from=builder --chown=slidoxa:slidoxa /build/.next-build/standalone ./
+COPY --from=builder --chown=slidoxa:slidoxa /build/.next-build/static ./build/.next-build/static
+COPY --from=builder --chown=slidoxa:slidoxa /build/public ./build/public
+
+USER slidoxa
+EXPOSE 3000
+
+ENV HOSTNAME=0.0.0.0 PORT=3000
+CMD ["node", "build/server.js"]

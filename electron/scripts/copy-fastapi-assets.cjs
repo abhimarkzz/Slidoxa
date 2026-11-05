@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const electronRoot = path.join(__dirname, "..");
-const fastapiDir = path.join(electronRoot, "..", "servers", "fastapi");
+const fastapiDir = path.join(electronRoot, "..", "packages", "backend", "app", "legacy");
 const resourcesFastapiDir = path.join(electronRoot, "resources", "fastapi");
 
 const sources = [

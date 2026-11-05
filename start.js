@@ -30,10 +30,42 @@ process.umask(0o022);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const fastapiDir = join(__dirname, "servers/fastapi");
-const nextjsDir = join(__dirname, "servers/nextjs");
-const nextjsStandaloneServer = join(nextjsDir, "server.js");
-const nextjsCli = join(nextjsDir, "node_modules/next/dist/bin/next");
+const resolvePackageDirectory = (packageRelativePath, legacyRelativePath) => {
+  const packageDirectory = join(__dirname, packageRelativePath);
+  if (existsSync(packageDirectory)) return packageDirectory;
+
+  const legacyDirectory = join(__dirname, legacyRelativePath);
+  if (existsSync(legacyDirectory)) return legacyDirectory;
+
+  throw new Error(
+    `Required application directory not found. Checked: ${packageDirectory} and ${legacyDirectory}`
+  );
+};
+
+const fastapiDir = resolvePackageDirectory(
+  "packages/backend/app/legacy",
+  "servers/fastapi"
+);
+const nextjsDir = resolvePackageDirectory(
+  "packages/frontend",
+  "servers/nextjs"
+);
+const nextjsStandaloneServerCandidates = [
+  join(nextjsDir, "server.js"),
+  join(nextjsDir, "packages", "frontend", "server.js"),
+  join(nextjsDir, "servers", "nextjs", "server.js"),
+];
+const nextjsStandaloneServer =
+  nextjsStandaloneServerCandidates.find(existsSync) || null;
+const nextjsStandaloneCwd = nextjsStandaloneServer
+  ? require("path").dirname(nextjsStandaloneServer)
+  : nextjsDir;
+const nextjsCliCandidates = [
+  join(nextjsDir, "node_modules/next/dist/bin/next"),
+  join(nextjsDir, "packages", "frontend", "node_modules/next/dist/bin/next"),
+  join(nextjsDir, "servers", "nextjs", "node_modules/next/dist/bin/next"),
+];
+const nextjsCli = nextjsCliCandidates.find(existsSync) || nextjsCliCandidates[0];
 const exportSyncScript = join(__dirname, "scripts/sync-presentation-export.cjs");
 const documentSyncScript = join(__dirname, "scripts/sync-document-dependencies.cjs");
 const nginxSourceConfigPath = join(__dirname, "nginx.conf");
@@ -536,7 +568,7 @@ const startServers = async (nginxReadyPromise) => {
     );
 
   const spawnNextjsProcess = (stdio = ["ignore", "pipe", "pipe"]) => {
-    const useStandaloneNextjs = !isDev && existsSync(nextjsStandaloneServer);
+    const useStandaloneNextjs = !isDev && Boolean(nextjsStandaloneServer);
     return spawn(
       process.execPath,
       useStandaloneNextjs
@@ -551,7 +583,7 @@ const startServers = async (nginxReadyPromise) => {
             nextjsPort.toString(),
           ],
       {
-        cwd: nextjsDir,
+        cwd: useStandaloneNextjs ? nextjsStandaloneCwd : nextjsDir,
         stdio,
         env:
           useStandaloneNextjs

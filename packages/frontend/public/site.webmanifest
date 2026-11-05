@@ -1,0 +1,14 @@
+{
+  "name": "Slidoxa",
+  "short_name": "Slidoxa",
+  "description": "Create and deliver presentations with Slidoxa.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F1020",
+  "theme_color": "#0F1020",
+  "icons": [
+    { "src": "/slidoxa-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/slidoxa-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/slidoxa-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

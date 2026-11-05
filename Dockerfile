@@ -10,12 +10,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 RUN python -m venv --without-pip /opt/venv \
     && pip install --no-cache-dir uv
 
-COPY servers/fastapi/pyproject.toml servers/fastapi/uv.lock ./
+COPY packages/backend/app/legacy/pyproject.toml packages/backend/app/legacy/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
     && uv pip install --python /opt/venv/bin/python -r /tmp/requirements.txt
 
-COPY servers/fastapi /app/servers/fastapi
+COPY packages/backend/app/legacy /app/servers/fastapi
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python --no-deps . \
     && cd /tmp \
@@ -42,11 +42,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Match the npm version that supports the frontend lockfile's range overrides.
 RUN npm install --global npm@11.16.0
 
-COPY servers/nextjs/package.json servers/nextjs/package-lock.json ./
+COPY packages/frontend/package.json packages/frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
-COPY servers/nextjs /app/servers/nextjs
+COPY packages/frontend /app/servers/nextjs
 RUN npm run build \
     && rm -rf .next-build/cache
 
@@ -143,8 +143,12 @@ RUN test -f /app/presentation-export/runner.mjs \
     && test -f /app/presentation-export/node_modules/@presenton/export-core/dist/index.js
 
 COPY --from=nextjs-builder /app/servers/nextjs/.next-build/standalone/ /app/servers/nextjs/
+# Keep root-level assets for compatibility with flat standalone bundles.
 COPY --from=nextjs-builder /app/servers/nextjs/public /app/servers/nextjs/public
 COPY --from=nextjs-builder /app/servers/nextjs/.next-build/static /app/servers/nextjs/.next-build/static
+# Place assets beside the nested standalone server as well.
+COPY --from=nextjs-builder /app/servers/nextjs/public /app/servers/nextjs/servers/nextjs/public
+COPY --from=nextjs-builder /app/servers/nextjs/.next-build/static /app/servers/nextjs/servers/nextjs/.next-build/static
 
 COPY start.js LICENSE NOTICE ./
 COPY scripts/presenton-terminal-banner.mjs /app/scripts/presenton-terminal-banner.mjs

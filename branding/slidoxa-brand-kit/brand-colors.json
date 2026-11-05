@@ -1,0 +1,15 @@
+{
+  "brand": "Slidoxa",
+  "status": "draft",
+  "colors": {
+    "ink": "#0F1020",
+    "violet": "#7A5AF8",
+    "blue": "#60A5FA",
+    "white": "#FFFFFF"
+  },
+  "typography": {
+    "wordmark": "Plus Jakarta Sans",
+    "weight": 700,
+    "case": "lowercase"
+  }
+}

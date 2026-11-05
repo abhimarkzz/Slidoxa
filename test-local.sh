@@ -38,7 +38,7 @@ test_repository_tools() {
 }
 
 test_fastapi() {
-    cd "$SCRIPT_DIR/servers/fastapi" || return 1
+    cd "$SCRIPT_DIR/packages/backend/app/legacy" || return 1
     uv sync --locked --dev || return 1
     mkdir -p /tmp/presenton-tests/app-data /tmp/presenton-tests/temp || return 1
     APP_DATA_DIRECTORY=/tmp/presenton-tests/app-data \
@@ -50,7 +50,7 @@ test_fastapi() {
 }
 
 test_nextjs() {
-    cd "$SCRIPT_DIR/servers/nextjs" &&
+    cd "$SCRIPT_DIR/packages/frontend" &&
         npm ci &&
         npm test &&
         npm run lint &&

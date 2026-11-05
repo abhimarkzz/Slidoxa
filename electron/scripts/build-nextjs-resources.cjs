@@ -3,7 +3,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const electronRoot = path.join(__dirname, "..");
-const nextjsDir = path.join(electronRoot, "..", "servers", "nextjs");
+const nextjsDir = path.join(electronRoot, "..", "packages", "frontend");
 const outDir = path.join(electronRoot, "resources", "nextjs");
 const nextBuildDir = path.join(nextjsDir, ".next-build");
 const standaloneDir = path.join(nextBuildDir, "standalone");
@@ -58,15 +58,56 @@ for (const name of fs.readdirSync(standaloneDir)) {
   );
 }
 
-// Next.js 16 standalone traces the app under servers/nextjs/; the server process
-// runs from that directory, so static assets and public files must live beside
-// server.js — not only at the bundle root (older Next versions used a flatter layout).
-const nestedStandaloneDir = path.join(outDir, "servers", "nextjs");
+// Next.js standalone traces the application under packages/frontend after migration.
+// Keep assets beside server.js and retain the legacy destination for older bundles.
+const packageStandaloneDir = path.join(outDir, "packages", "frontend");
+const legacyNestedStandaloneDir = path.join(outDir, "servers", "nextjs");
+
+// The standalone trace may contain an absolute node_modules symlink back to
+// the build directory. Rebase it so the packaged app uses its bundled modules.
+const packageServer = path.join(packageStandaloneDir, "server.js");
+const packageNodeModules = path.join(packageStandaloneDir, "node_modules");
+const bundledNodeModules = path.join(legacyNestedStandaloneDir, "node_modules");
+
+if (fs.existsSync(packageServer)) {
+  if (!fs.existsSync(bundledNodeModules)) {
+    throw new Error(`Bundled Next.js dependencies not found: ${bundledNodeModules}`);
+  }
+
+  let existingNodeModules;
+  try {
+    existingNodeModules = fs.lstatSync(packageNodeModules);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  if (existingNodeModules && !existingNodeModules.isSymbolicLink()) {
+    throw new Error(
+      `Refusing to replace a real node_modules directory: ${packageNodeModules}`
+    );
+  }
+
+  if (existingNodeModules) {
+    fs.unlinkSync(packageNodeModules);
+  }
+
+  const relativeNodeModules = path.relative(
+    packageStandaloneDir,
+    bundledNodeModules
+  );
+  fs.symlinkSync(relativeNodeModules, packageNodeModules, "dir");
+  console.log("Rebased standalone node_modules link:", relativeNodeModules);
+}
 
 const staticSrc = path.join(nextBuildDir, "static");
 const staticDestinations = [
   path.join(outDir, ".next-build", "static"),
-  path.join(nestedStandaloneDir, ".next-build", "static"),
+  ...(fs.existsSync(path.join(packageStandaloneDir, "server.js"))
+    ? [path.join(packageStandaloneDir, ".next-build", "static")]
+    : []),
+  ...(fs.existsSync(path.join(legacyNestedStandaloneDir, "server.js"))
+    ? [path.join(legacyNestedStandaloneDir, ".next-build", "static")]
+    : []),
 ];
 if (fs.existsSync(staticSrc)) {
   for (const staticDest of staticDestinations) {
@@ -80,8 +121,11 @@ if (fs.existsSync(staticSrc)) {
 const publicDir = path.join(nextjsDir, "public");
 if (fs.existsSync(publicDir)) {
   cpDir(publicDir, path.join(outDir, "public"));
-  if (fs.existsSync(nestedStandaloneDir)) {
-    cpDir(publicDir, path.join(nestedStandaloneDir, "public"));
+  if (fs.existsSync(path.join(packageStandaloneDir, "server.js"))) {
+    cpDir(publicDir, path.join(packageStandaloneDir, "public"));
+  }
+  if (fs.existsSync(path.join(legacyNestedStandaloneDir, "server.js"))) {
+    cpDir(publicDir, path.join(legacyNestedStandaloneDir, "public"));
   }
 }
 

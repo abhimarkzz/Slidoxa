@@ -541,13 +541,35 @@ function parseOtoolDeps(filePath) {
   if (result.status !== 0) {
     fail(`otool -L failed for ${filePath}: ${result.stderr || result.status}`);
   }
-  return (result.stdout || "")
+  const sourceDir = path.dirname(filePath);
+  const raw = (result.stdout || "")
     .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim().split(/\s+/)[0])
-    .filter(Boolean)
-    .filter((dep) => dep.startsWith("/"))
-    .filter((dep) => !dep.startsWith("/System/Library/") && !dep.startsWith("/usr/lib/"));
+    .filter(Boolean);
+  const resolved = [];
+  for (const dep of raw) {
+    // Resolve @rpath/libFOO.dylib against the dep's own directory, which is
+    // the standard brew sibling-install layout. Keep the original refName so
+    // install_name_tool -change can rewrite the recorded load command.
+    let sourcePath = dep;
+    if (dep.startsWith("@rpath/")) {
+      const basename = dep.slice("@rpath/".length);
+      const sibling = path.join(sourceDir, basename);
+      if (fs.existsSync(sibling)) {
+        sourcePath = sibling;
+      } else {
+        continue;
+      }
+    } else if (!dep.startsWith("/")) {
+      continue;
+    }
+    if (sourcePath.startsWith("/System/Library/") || sourcePath.startsWith("/usr/lib/")) {
+      continue;
+    }
+    resolved.push({ refName: dep, sourcePath });
+  }
+  return resolved;
 }
 
 function isMachOFile(filePath) {
@@ -586,35 +608,39 @@ function relinkMacDylibs(targetDir, mainExecutable) {
   const libDir = path.join(targetDir, "lib");
   fs.mkdirSync(libDir, { recursive: true });
 
-  const queue = [mainExecutable];
+  // For @rpath resolution we need to know where each vendored file came from
+  // in the brew prefix; otool runs on the already-copied file so its sibling
+  // directory is the (initially empty) target lib. Track parseSource for each
+  // queued vendored file so @rpath/* can be resolved against the original.
+  const queue = [{ vendoredPath: mainExecutable, parseSource: mainExecutable }];
   const visited = new Set();
   const copiedBySource = new Map();
 
   while (queue.length) {
-    const current = queue.shift();
+    const { vendoredPath: current, parseSource } = queue.shift();
     if (visited.has(current) || !fs.existsSync(current) || !isMachOFile(current)) {
       continue;
     }
     visited.add(current);
 
-    const deps = parseOtoolDeps(current);
-    for (const dep of deps) {
-      const depBase = path.basename(dep);
-      let vendored = copiedBySource.get(dep);
+    const deps = parseOtoolDeps(parseSource);
+    for (const { refName, sourcePath } of deps) {
+      const depBase = path.basename(sourcePath);
+      let vendored = copiedBySource.get(sourcePath);
       if (!vendored) {
         vendored = path.join(libDir, depBase);
         if (!fs.existsSync(vendored)) {
-          fs.copyFileSync(dep, vendored);
+          fs.copyFileSync(sourcePath, vendored);
           fs.chmodSync(vendored, 0o755);
         }
-        copiedBySource.set(dep, vendored);
-        queue.push(vendored);
+        copiedBySource.set(sourcePath, vendored);
+        queue.push({ vendoredPath: vendored, parseSource: sourcePath });
       }
 
       const replacement = current === mainExecutable
         ? `@executable_path/../lib/${depBase}`
         : `@loader_path/${depBase}`;
-      run("install_name_tool", ["-change", dep, replacement, current]);
+      run("install_name_tool", ["-change", refName, replacement, current]);
     }
 
     if (current !== mainExecutable) {

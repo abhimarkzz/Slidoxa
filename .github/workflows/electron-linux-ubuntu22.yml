@@ -31,7 +31,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             electron/package-lock.json
-            servers/nextjs/package-lock.json
+            packages/frontend/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,7 +42,7 @@ jobs:
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           enable-cache: true
-          cache-dependency-glob: servers/fastapi/uv.lock
+          cache-dependency-glob: packages/backend/app/legacy/uv.lock
 
       - name: Install Linux packaging dependencies
         run: |

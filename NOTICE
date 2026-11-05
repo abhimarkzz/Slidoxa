@@ -1,4 +1,41 @@
 -------------------------------------
+SLIDOXA MODIFICATIONS
+-------------------------------------
+Slidoxa is a derivative work of Presenton (https://github.com/presenton/presenton),
+licensed under the Apache License 2.0. A copy of the License is included in
+this repository as LICENSE. The upstream and third-party notices below are
+preserved verbatim; this section records Slidoxa's own modifications in
+accordance with Apache License 2.0, Section 4(b).
+
+Significant modifications made by the Slidoxa maintainers relative to the
+upstream Presenton tree:
+
+- 2026-11: Restructured the source tree into a monorepo under packages/
+  (packages/backend/app/legacy, packages/frontend, packages/shared-schema)
+  and migrated backend tests, migrations, assets and electron resource
+  paths to the new layout.
+- 2026-11: Removed the unconditional desktop DISABLE_AUTH bypass. The
+  backend's is_disable_auth_enabled() now requires the trusted Electron
+  runtime (PRESENTON_ELECTRON=true) in combination with DISABLE_AUTH.
+  Addresses the attack class reported in upstream presenton/presenton
+  issues #972, #973 and #974.
+- 2026-11: Introduced a per-launch cryptographic desktop authentication
+  token (crypto.randomBytes(32), hmac.compare_digest) with strict Host
+  and Origin allowlist validation (electron/app/utils/desktop-auth.ts,
+  packages/backend/app/legacy/api/v1/auth/desktop.py).
+- 2026-11: Replaced the public /app_data StaticFiles mount with an
+  owner-scoped mount (_OwnerScopedStaticFiles in
+  packages/backend/app/legacy/api/v1/auth/assets.py) that authorises
+  each file against the authenticated principal.
+- 2026-11: Fixed Electron packaging path discovery to recognise the
+  monorepo layout (electron/build.js, electron/scripts/sync-export-runtime.cjs,
+  electron/scripts/prepare-imagemagick.cjs).
+
+None of the above claims authorship of inherited Presenton code. Upstream
+copyright headers remain in the files they annotate. Slidoxa-specific
+contributions are tracked by the Git history of the Slidoxa repository.
+
+-------------------------------------
 PYTHON PACKAGES
 -------------------------------------
 aioquic
@@ -26823,3 +26860,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Project-specific modifications in this fork:
+
+- Electron IPC sender and origin security hardening.
+- Export request validation and secure file handling.
+- Private storage security improvements.
+- FastAPI CORS security configuration.
+- Related security regression tests.
+
+Original Presenton and third-party attribution notices are retained.

@@ -12,10 +12,10 @@ export const baseDir = app.getAppPath();
 export const resourceBaseDir =
   isDev || !baseDir.endsWith(".asar") ? baseDir : `${baseDir}.unpacked`;
 export const fastapiDir = isDev
-  ? path.resolve(baseDir, "..", "servers", "fastapi")
+  ? path.resolve(baseDir, "..", "packages", "backend", "app", "legacy")
   : path.join(resourceBaseDir, "resources/fastapi");
 export const nextjsDir = isDev
-  ? path.resolve(baseDir, "..", "servers", "nextjs")
+  ? path.resolve(baseDir, "..", "packages", "frontend")
   : path.join(resourceBaseDir, "resources/nextjs");
 
 const appDirectoryName = "Presenton Open Source";

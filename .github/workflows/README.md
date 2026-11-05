@@ -17,7 +17,7 @@ started manually. It enforces the checks that exist in the current repository:
 
 - repository tooling: template-converter tests and bundled export verification;
 - FastAPI: every pytest test using the Python version and locked dependencies
-  declared in `servers/fastapi`;
+  declared in `packages/backend/app/legacy`;
 - Next.js: all Node.js unit tests, ESLint, a production build, and Cypress
   component tests.
 
@@ -39,7 +39,7 @@ GitHub Actions workflow.
 ### FastAPI
 
 ```bash
-cd servers/fastapi
+cd packages/backend/app/legacy
 uv sync --locked --dev
 mkdir -p /tmp/presenton-tests/app-data /tmp/presenton-tests/temp
 APP_DATA_DIRECTORY=/tmp/presenton-tests/app-data \
@@ -53,7 +53,7 @@ uv run --locked python -m pytest --verbose --tb=short
 ### Next.js
 
 ```bash
-cd servers/nextjs
+cd packages/frontend
 npm ci
 npm test
 npm run lint
