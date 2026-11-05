@@ -1,11 +1,8 @@
-"""Slidoxa native FastAPI application.
-
-Entrypoint: ``app.api.main:app``. Mounts the health, auth and
-provider-key routers. Does not import from packages/backend/app/legacy/
-so the inherited Presenton stack is untouched.
-"""
+"""Slidoxa native FastAPI auth and provider-key API."""
 
 from __future__ import annotations
+
+import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
@@ -14,15 +11,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api import db as db_module
-from app.api.models import ProviderKey, User
+from app.api.models import ProviderKey, User, Workspace
 from app.security import auth as auth_mod
 from app.security import crypto
 
-
-app = FastAPI(title="Slidoxa API", version="0.1.0")
-
-
-# ----------------------------- schemas -------------------------------
+app = FastAPI(title="Slidoxa API", version="0.2.0")
 
 
 class RegisterIn(BaseModel):
@@ -50,17 +43,21 @@ class MeOut(BaseModel):
     email: str
 
 
-# ----------------------------- helpers -------------------------------
+def _principal_uuid(principal: auth_mod.Principal) -> uuid.UUID:
+    try:
+        return uuid.UUID(principal.sub)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid user session",
+        ) from exc
 
 
 def _get_user(session: Session, principal: auth_mod.Principal) -> User:
-    user = session.get(User, principal.sub)
+    user = session.get(User, _principal_uuid(principal))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user not found")
     return user
-
-
-# ----------------------------- routes --------------------------------
 
 
 @app.get("/health")
@@ -74,7 +71,12 @@ def register(
     response: Response,
     session: Session = Depends(db_module.get_session),
 ) -> MeOut:
+    workspace = Workspace(name="Personal workspace")
+    session.add(workspace)
+    session.flush()
+
     user = User(
+        workspace_id=workspace.workspace_id,
         email=payload.email.lower(),
         password_hash=auth_mod.hash_password(payload.password),
     )
@@ -84,11 +86,12 @@ def register(
     except IntegrityError:
         session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="email already registered"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="email already registered",
         )
     session.refresh(user)
-    auth_mod.issue_session_cookies(response, subject=str(user.id))
-    return MeOut(id=str(user.id), email=user.email)
+    auth_mod.issue_session_cookies(response, subject=str(user.user_id))
+    return MeOut(id=str(user.user_id), email=user.email)
 
 
 @app.post("/auth/login", response_model=MeOut)
@@ -103,8 +106,8 @@ def login(
     if auth_mod.needs_rehash(user.password_hash):
         user.password_hash = auth_mod.hash_password(payload.password)
         session.commit()
-    auth_mod.issue_session_cookies(response, subject=str(user.id))
-    return MeOut(id=str(user.id), email=user.email)
+    auth_mod.issue_session_cookies(response, subject=str(user.user_id))
+    return MeOut(id=str(user.user_id), email=user.email)
 
 
 @app.get("/auth/me", response_model=MeOut)
@@ -113,7 +116,7 @@ def me(
     session: Session = Depends(db_module.get_session),
 ) -> MeOut:
     user = _get_user(session, principal)
-    return MeOut(id=str(user.id), email=user.email)
+    return MeOut(id=str(user.user_id), email=user.email)
 
 
 @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -132,18 +135,14 @@ def list_provider_keys(
     principal: auth_mod.Principal = Depends(auth_mod.current_user),
     session: Session = Depends(db_module.get_session),
 ) -> list[ProviderKeyOut]:
+    """Return safe stored hints only; never decrypt or serialize ciphertext."""
     rows = session.scalars(
-        select(ProviderKey).where(ProviderKey.owner_id == principal.sub)
+        select(ProviderKey).where(ProviderKey.user_id == _principal_uuid(principal))
     ).all()
-    out: list[ProviderKeyOut] = []
-    for row in rows:
-        try:
-            plain = crypto.decrypt(row.encrypted_key)
-            masked = crypto.mask(plain)
-        except crypto.CryptoDecryptionError:
-            masked = "***"
-        out.append(ProviderKeyOut(provider=row.provider, masked_key=masked))
-    return out
+    return [
+        ProviderKeyOut(provider=row.provider, masked_key=row.key_hint)
+        for row in rows
+    ]
 
 
 @app.put("/provider-keys", response_model=ProviderKeyOut)
@@ -153,25 +152,31 @@ def upsert_provider_key(
     _csrf: None = Depends(auth_mod.csrf_guard),
     session: Session = Depends(db_module.get_session),
 ) -> ProviderKeyOut:
-    encrypted = crypto.encrypt(payload.api_key)
+    user_id = _principal_uuid(principal)
+    # Fernet algorithm, HKDF inputs, and token format remain unchanged.
+    encrypted = crypto.encrypt(payload.api_key).encode("ascii")
+    hint = crypto.mask(payload.api_key)
+
     existing = session.scalar(
         select(ProviderKey).where(
-            ProviderKey.owner_id == principal.sub,
+            ProviderKey.user_id == user_id,
             ProviderKey.provider == payload.provider,
         )
     )
     if existing is None:
         session.add(
             ProviderKey(
-                owner_id=principal.sub,
+                user_id=user_id,
                 provider=payload.provider,
                 encrypted_key=encrypted,
+                key_hint=hint,
             )
         )
     else:
         existing.encrypted_key = encrypted
+        existing.key_hint = hint
     session.commit()
-    return ProviderKeyOut(provider=payload.provider, masked_key=crypto.mask(payload.api_key))
+    return ProviderKeyOut(provider=payload.provider, masked_key=hint)
 
 
 @app.delete("/provider-keys/{provider}", status_code=status.HTTP_204_NO_CONTENT)
@@ -183,7 +188,7 @@ def delete_provider_key(
 ) -> Response:
     row = session.scalar(
         select(ProviderKey).where(
-            ProviderKey.owner_id == principal.sub,
+            ProviderKey.user_id == _principal_uuid(principal),
             ProviderKey.provider == provider,
         )
     )

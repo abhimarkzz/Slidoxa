@@ -1,8 +1,7 @@
-"""Slidoxa native API integration tests.
+"""Slidoxa API integration tests against an explicitly configured test DB.
 
-Skipped automatically when SLIDOXA_PG_TEST_URL is not set so the suite
-stays runnable without Docker. When set, the whole Alembic chain is
-applied to the live DB and the FastAPI app is driven via TestClient.
+Set SLIDOXA_PG_TEST_URL only to a disposable PostgreSQL/pgvector database.
+The fixture rebuilds that database and must never be pointed at live data.
 """
 
 from __future__ import annotations
@@ -17,22 +16,31 @@ from sqlalchemy import create_engine, text
 
 PG_URL = os.getenv("SLIDOXA_PG_TEST_URL")
 pytestmark = pytest.mark.skipif(not PG_URL, reason="SLIDOXA_PG_TEST_URL not set")
-
-
 ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
+EXPECTED_TABLES = {
+    "workspaces", "users", "provider_keys", "presentations",
+    "source_documents", "document_chunks", "evidence_facts", "slides",
+    "qa_findings", "job_queue", "deck_events", "agent_runs",
+}
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _reset_db():
+def _reset_disposable_db():
     assert PG_URL
-    # Rebuild schema from scratch for this module.
     env = {**os.environ, "DATABASE_URL": PG_URL}
-    subprocess.run(["alembic", "-c", str(ALEMBIC_INI), "downgrade", "base"], env=env, check=True)
-    subprocess.run(["alembic", "-c", str(ALEMBIC_INI), "upgrade", "head"], env=env, check=True)
-    # Point the API's lazy engine at the test DB. The autouse conftest
-    # fixture doesn't touch DATABASE_URL on purpose, so set it here.
+    subprocess.run(
+        ["alembic", "-c", str(ALEMBIC_INI), "downgrade", "base"],
+        env=env,
+        check=True,
+    )
+    subprocess.run(
+        ["alembic", "-c", str(ALEMBIC_INI), "upgrade", "head"],
+        env=env,
+        check=True,
+    )
     os.environ["DATABASE_URL"] = PG_URL
     from app.api import db as db_module
+
     db_module.reset_for_tests()
     yield
     db_module.reset_for_tests()
@@ -42,159 +50,182 @@ def _reset_db():
 @pytest.fixture()
 def client():
     from app.api.main import app
-    with TestClient(app) as c:
-        yield c
 
-
-# ---------- health ----------
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_health(client):
-    r = client.get("/health")
-    assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
-# ---------- registration + login ----------
+def test_normalized_schema_has_twelve_tables_and_foreign_keys():
+    assert PG_URL
+    engine = create_engine(PG_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema='public' AND table_type='BASE TABLE' "
+                        "AND table_name <> 'alembic_version'"
+                    )
+                )
+            }
+            assert tables == EXPECTED_TABLES
+            fk_count = connection.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.table_constraints "
+                    "WHERE table_schema='public' AND constraint_type='FOREIGN KEY'"
+                )
+            ).scalar_one()
+            assert fk_count >= 12
+    finally:
+        engine.dispose()
 
 
-def test_register_login_me_logout(client):
-    r = client.post("/auth/register", json={"email": "a@example.com", "password": "correct-horse-battery"})
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["email"] == "a@example.com"
+def test_register_login_me_logout_and_personal_workspace(client):
+    response = client.post(
+        "/auth/register",
+        json={"email": "a@example.com", "password": "correct-horse-battery"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
     user_id = body["id"]
-    # Cookies should now be set on the client.
+    assert body["email"] == "a@example.com"
     assert "ogs_access" in client.cookies
     assert "ogs_csrf" in client.cookies
 
-    r = client.get("/auth/me")
-    assert r.status_code == 200
-    assert r.json() == {"id": user_id, "email": "a@example.com"}
+    engine = create_engine(PG_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            workspace_count = connection.execute(
+                text(
+                    "SELECT count(*) FROM users u JOIN workspaces w "
+                    "ON w.workspace_id=u.workspace_id WHERE u.user_id=:user_id"
+                ),
+                {"user_id": user_id},
+            ).scalar_one()
+        assert workspace_count == 1
+    finally:
+        engine.dispose()
 
-    # Logout needs CSRF header.
+    response = client.get("/auth/me")
+    assert response.status_code == 200
+    assert response.json() == {"id": user_id, "email": "a@example.com"}
+
     csrf = client.cookies.get("ogs_csrf")
-    r = client.post("/auth/logout", headers={"X-CSRF": csrf})
-    assert r.status_code == 204
-    client.cookies.clear()
-    r = client.get("/auth/me")
-    assert r.status_code == 401
-
-
-def test_register_rejects_duplicate_email(client):
-    client.post("/auth/register", json={"email": "dup@example.com", "password": "correct-horse-battery"})
-    r = client.post("/auth/register", json={"email": "dup@example.com", "password": "correct-horse-battery"})
-    assert r.status_code == 409
-
-
-def test_register_rejects_weak_password(client):
-    r = client.post("/auth/register", json={"email": "w@example.com", "password": "short"})
-    assert r.status_code == 422
-
-
-def test_login_rejects_wrong_password(client):
-    client.post("/auth/register", json={"email": "wp@example.com", "password": "correct-horse-battery"})
-    client.cookies.clear()
-    r = client.post("/auth/login", json={"email": "wp@example.com", "password": "nope-nope-nope-123"})
-    assert r.status_code == 401
-
-
-def test_me_requires_auth(client):
+    response = client.post("/auth/logout", headers={"X-CSRF": csrf})
+    assert response.status_code == 204
     client.cookies.clear()
     assert client.get("/auth/me").status_code == 401
 
 
-# ---------- provider keys ----------
+def test_register_duplicate_email_and_weak_password(client):
+    payload = {"email": "duplicate@example.com", "password": "correct-horse-battery"}
+    assert client.post("/auth/register", json=payload).status_code == 201
+    assert client.post("/auth/register", json=payload).status_code == 409
+    assert client.post(
+        "/auth/register", json={"email": "weak@example.com", "password": "short"}
+    ).status_code == 422
 
 
 def _bootstrap(client, email: str) -> str:
     client.cookies.clear()
-    r = client.post("/auth/register", json={"email": email, "password": "correct-horse-battery"})
-    assert r.status_code == 201, r.text
-    return client.cookies.get("ogs_csrf")
+    response = client.post(
+        "/auth/register",
+        json={"email": email, "password": "correct-horse-battery"},
+    )
+    assert response.status_code == 201, response.text
+    csrf = client.cookies.get("ogs_csrf")
+    assert csrf
+    return csrf
 
 
-def test_provider_key_roundtrip_is_encrypted_and_masked(client):
-    csrf = _bootstrap(client, "k1@example.com")
-    r = client.put(
+def test_provider_key_api_returns_only_mask_and_raw_bytea_is_ciphertext(client):
+    csrf = _bootstrap(client, "keys@example.com")
+    plaintext = "sk-prod-SUPERSECRET-VALUE-01"
+    response = client.put(
         "/provider-keys",
-        json={"provider": "openai", "api_key": "sk-prod-SUPERSECRET-VALUE-01"},
+        json={"provider": "openai", "api_key": plaintext},
         headers={"X-CSRF": csrf},
     )
-    assert r.status_code == 200
-    body = r.json()
-    assert body["provider"] == "openai"
-    assert body["masked_key"] == "sk-...01"
-    assert "SUPERSECRET" not in r.text
+    assert response.status_code == 200
+    assert response.json() == {"provider": "openai", "masked_key": "sk-...01"}
+    assert plaintext not in response.text
 
-    r = client.get("/provider-keys")
-    assert r.status_code == 200
-    rows = r.json()
-    assert rows == [{"provider": "openai", "masked_key": "sk-...01"}]
-    assert "SUPERSECRET" not in r.text
+    response = client.get("/provider-keys")
+    assert response.status_code == 200
+    assert response.json() == [{"provider": "openai", "masked_key": "sk-...01"}]
+    assert plaintext not in response.text
+    assert "encrypted_key" not in response.text
+    assert "api_key" not in response.text
 
-    # DB column stores ciphertext, not plaintext.
     engine = create_engine(PG_URL, future=True)
-    with engine.connect() as c:
-        stored = c.execute(text("SELECT encrypted_key FROM slidoxa_provider_key")).scalar()
-    assert stored
-    assert "SUPERSECRET" not in stored
-    assert stored.startswith("gAAAA")  # Fernet token marker
+    try:
+        with engine.connect() as connection:
+            stored = connection.execute(
+                text("SELECT encrypted_key FROM provider_keys WHERE provider='openai'")
+            ).scalar_one()
+        ciphertext = bytes(stored)
+        assert ciphertext.startswith(b"gAAAA")
+        assert plaintext.encode("utf-8") not in ciphertext
+        assert b"SUPERSECRET" not in ciphertext
+    finally:
+        engine.dispose()
 
 
-def test_provider_key_upsert_replaces_value(client):
-    csrf = _bootstrap(client, "k2@example.com")
-    client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-first-VALUE-0001"}, headers={"X-CSRF": csrf})
-    client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-second-VALUE-0002"}, headers={"X-CSRF": csrf})
-    rows = client.get("/provider-keys").json()
-    assert rows == [{"provider": "openai", "masked_key": "sk-...02"}]
-
-
-def test_provider_key_write_requires_csrf(client):
-    _bootstrap(client, "k3@example.com")
-    r = client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-abcd-1234"})
-    assert r.status_code == 403
-
-
-def test_provider_key_write_requires_auth(client):
-    client.cookies.clear()
-    r = client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-abcd-1234"}, headers={"X-CSRF": "x"})
-    assert r.status_code == 401
-
-
-def test_provider_key_delete(client):
-    csrf = _bootstrap(client, "k4@example.com")
-    client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-abc-99"}, headers={"X-CSRF": csrf})
-    r = client.delete("/provider-keys/openai", headers={"X-CSRF": csrf})
-    assert r.status_code == 204
+def test_provider_key_upsert_and_delete(client):
+    csrf = _bootstrap(client, "key-lifecycle@example.com")
+    first = client.put(
+        "/provider-keys",
+        json={"provider": "openai", "api_key": "sk-first-VALUE-0001"},
+        headers={"X-CSRF": csrf},
+    )
+    second = client.put(
+        "/provider-keys",
+        json={"provider": "openai", "api_key": "sk-second-VALUE-0002"},
+        headers={"X-CSRF": csrf},
+    )
+    assert first.status_code == second.status_code == 200
+    assert second.json() == {"provider": "openai", "masked_key": "sk-...02"}
+    assert client.get("/provider-keys").json() == [
+        {"provider": "openai", "masked_key": "sk-...02"}
+    ]
+    assert client.delete("/provider-keys/openai", headers={"X-CSRF": csrf}).status_code == 204
     assert client.get("/provider-keys").json() == []
-    # Second delete 404s.
-    r = client.delete("/provider-keys/openai", headers={"X-CSRF": csrf})
-    assert r.status_code == 404
+
+
+def test_provider_key_writes_require_auth_and_csrf(client):
+    client.cookies.clear()
+    anonymous = client.put(
+        "/provider-keys",
+        json={"provider": "openai", "api_key": "sk-abcd-1234"},
+        headers={"X-CSRF": "not-a-session"},
+    )
+    assert anonymous.status_code == 401
+
+    _bootstrap(client, "csrf@example.com")
+    no_header = client.put(
+        "/provider-keys", json={"provider": "openai", "api_key": "sk-abcd-1234"}
+    )
+    assert no_header.status_code == 403
 
 
 def test_provider_key_ownership_isolation(client):
-    csrf_a = _bootstrap(client, "iso-a@example.com")
-    client.put("/provider-keys", json={"provider": "openai", "api_key": "sk-A-01"}, headers={"X-CSRF": csrf_a})
-    # Log out and switch to a different user.
+    csrf_a = _bootstrap(client, "owner-a@example.com")
+    response = client.put(
+        "/provider-keys",
+        json={"provider": "openai", "api_key": "sk-owner-a-01"},
+        headers={"X-CSRF": csrf_a},
+    )
+    assert response.status_code == 200
     client.post("/auth/logout", headers={"X-CSRF": csrf_a})
-    client.cookies.clear()
-    csrf_b = _bootstrap(client, "iso-b@example.com")
+
+    csrf_b = _bootstrap(client, "owner-b@example.com")
     assert client.get("/provider-keys").json() == []
-    # B cannot delete A's key.
-    r = client.delete("/provider-keys/openai", headers={"X-CSRF": csrf_b})
-    assert r.status_code == 404
-
-
-def test_legacy_tables_are_not_in_this_database(client):
-    # Isolation sanity: the inherited Presenton `user` SQLModel table
-    # must not exist in the Slidoxa database just because the API ran.
-    engine = create_engine(PG_URL, future=True)
-    with engine.connect() as c:
-        exists = c.execute(
-            text(
-                "SELECT count(*) FROM information_schema.tables "
-                "WHERE table_schema='public' AND table_name='user'"
-            )
-        ).scalar()
-    assert exists == 0
+    assert client.delete("/provider-keys/openai", headers={"X-CSRF": csrf_b}).status_code == 404

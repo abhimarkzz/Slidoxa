@@ -54,3 +54,4 @@ servers/fastapi/fastembed_cache/
 # Local Python-generated files
 .coverage
 *.egg-info/
+backups/

@@ -1,12 +1,8 @@
-"""Slidoxa Fernet-based at-rest encryption for user-supplied keys.
+"""Slidoxa Fernet-based at-rest encryption for provider keys.
 
-HKDF-SHA256 derives a 32-byte Fernet key from ``MASTER_KEY_SECRET`` under
-the fixed info string ``ogs-byok-v1``. Plaintext is never logged, and
-invalid tokens raise a typed error instead of leaking details.
-
-Masking rule (per spec):
-    * secrets longer than 8 chars   -> ``abc...yz``
-    * secrets 8 chars or shorter    -> ``***``
+The Fernet derivation and token format are unchanged. Since the normalized
+schema stores tokens as BYTEA, decrypt accepts both the historical TEXT
+representation and the new bytes representation.
 """
 
 from __future__ import annotations
@@ -20,7 +16,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 _HKDF_INFO = b"ogs-byok-v1"
-_HKDF_SALT = b""  # Deterministic: salt is empty by design; MASTER_KEY_SECRET is the input entropy.
+_HKDF_SALT = b""
 
 
 class CryptoConfigError(RuntimeError):
@@ -28,7 +24,7 @@ class CryptoConfigError(RuntimeError):
 
 
 class CryptoDecryptionError(RuntimeError):
-    """Raised on any Fernet decrypt failure. Carries no plaintext detail."""
+    """Raised on any malformed, tampered, or foreign Fernet token."""
 
 
 @dataclass(frozen=True)
@@ -40,14 +36,10 @@ def _load_master_secret() -> bytes:
     secret = os.getenv("MASTER_KEY_SECRET", "")
     if not secret:
         raise CryptoConfigError(
-            "MASTER_KEY_SECRET is not set. Generate one with "
-            "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"` "
-            "and configure it in the Slidoxa environment."
+            "MASTER_KEY_SECRET is not set. Configure it in the Slidoxa environment."
         )
     if len(secret.encode("utf-8")) < 16:
-        raise CryptoConfigError(
-            "MASTER_KEY_SECRET is too short. Supply at least 16 bytes of entropy."
-        )
+        raise CryptoConfigError("MASTER_KEY_SECRET is too short; require at least 16 bytes.")
     return secret.encode("utf-8")
 
 
@@ -59,13 +51,9 @@ def _derive() -> _DerivedKey:
         salt=_HKDF_SALT,
         info=_HKDF_INFO,
     )
-    key = hkdf.derive(material)
-    fernet_key = base64.urlsafe_b64encode(key)
-    return _DerivedKey(fernet=Fernet(fernet_key))
+    return _DerivedKey(fernet=Fernet(base64.urlsafe_b64encode(hkdf.derive(material))))
 
 
-# Cache the derived key at import time only if the env is already set;
-# otherwise defer until first call so tests can set the env per-test.
 _cached: _DerivedKey | None = None
 
 
@@ -77,44 +65,36 @@ def _fernet() -> Fernet:
 
 
 def reset_cache_for_tests() -> None:
-    """Allow tests to re-derive after mutating MASTER_KEY_SECRET."""
+    """Reset the derived key cache after a test changes its environment."""
     global _cached
     _cached = None
 
 
 def encrypt(plaintext: str) -> str:
-    """Encrypt a UTF-8 secret and return a urlsafe base64 Fernet token."""
+    """Encrypt UTF-8 plaintext and return an ASCII Fernet token."""
     if not isinstance(plaintext, str):
         raise TypeError("encrypt() requires a str plaintext")
-    token = _fernet().encrypt(plaintext.encode("utf-8"))
-    return token.decode("ascii")
+    return _fernet().encrypt(plaintext.encode("utf-8")).decode("ascii")
 
 
-def decrypt(token: str) -> str:
-    """Decrypt a Fernet token produced by ``encrypt``.
-
-    Raises CryptoDecryptionError for any malformed, tampered, or
-    foreign token. Never surfaces the underlying cryptography message.
-    """
-    if not isinstance(token, str) or not token:
-        raise CryptoDecryptionError("empty or non-string token")
+def decrypt(token: str | bytes | bytearray | memoryview) -> str:
+    """Decrypt either the historical TEXT or current BYTEA token form."""
+    if not token:
+        raise CryptoDecryptionError("empty token")
     try:
-        plaintext = _fernet().decrypt(token.encode("ascii"))
+        token_bytes = token.encode("ascii") if isinstance(token, str) else bytes(token)
+        plaintext = _fernet().decrypt(token_bytes)
+        return plaintext.decode("utf-8")
     except InvalidToken as exc:
         raise CryptoDecryptionError("invalid token") from exc
-    except Exception as exc:  # pragma: no cover - defensive
+    except CryptoConfigError:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive normalization
         raise CryptoDecryptionError("decrypt failed") from exc
-    return plaintext.decode("utf-8")
 
 
 def mask(secret: str) -> str:
-    """Return a safe display representation of a secret.
-
-    >>> mask("sk-1234567890ab")
-    'sk-...ab'
-    >>> mask("short")
-    '***'
-    """
+    """Return the existing safe API display hint (first 3 + last 2 chars)."""
     if not isinstance(secret, str) or len(secret) <= 8:
         return "***"
     return f"{secret[:3]}...{secret[-2:]}"
