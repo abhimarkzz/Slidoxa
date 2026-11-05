@@ -61,6 +61,11 @@ test("permission normalization neither follows artifact symlinks nor crosses sto
 
 test("server startup preserves config and recovery data with owner-only modes", posix, (t) => {
   const root = fixture(t);
+
+  // start.js requires these application directories during initialization.
+  fs.mkdirSync(path.join(root, "packages/backend/app/legacy"), { recursive: true });
+  fs.mkdirSync(path.join(root, "packages/frontend"), { recursive: true });
+
   const scripts = path.join(root, "scripts"); fs.mkdirSync(scripts);
   for (const name of ["user-config-env.cjs", "presenton-terminal-banner.mjs", "export-permissions.cjs", "run-node-script.mjs"]) fs.copyFileSync(new URL(name, import.meta.url), path.join(scripts, name));
   const data = path.join(root, "data"); fs.mkdirSync(data);
