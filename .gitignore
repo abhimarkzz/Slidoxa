@@ -55,3 +55,4 @@ servers/fastapi/fastembed_cache/
 .coverage
 *.egg-info/
 backups/
+.env.bak

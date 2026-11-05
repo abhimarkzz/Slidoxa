@@ -532,7 +532,7 @@ services:
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}
       - RESET_AUTH=${RESET_AUTH:-}
 
-  # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
   # Slidoxa Phase 2 services (profile: core). Runs in parallel with the
   # upstream Presenton `production` / `development` services above and
   # shares none of their volumes, ports or env vars.
@@ -565,8 +565,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
-      MASTER_KEY_SECRET: ${MASTER_KEY_SECRET:-}
-      JWT_SECRET: ${JWT_SECRET:-}
+      MASTER_KEY_SECRET: ${MASTER_KEY_SECRET:?set MASTER_KEY_SECRET in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
     ports:
       - "127.0.0.1:8000:8000"
     read_only: true
